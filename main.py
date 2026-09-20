@@ -22,7 +22,6 @@ async def call_llm(prompt: str) -> str:
     )
     return response.choices[0].message.content
 
-
 async def main():
     prompts = [f"what is {i} + {i}?" for i in range(10)] 
     # execute all requests concurrently
