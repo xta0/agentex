@@ -7,10 +7,12 @@ from litellm import acompletion
 
 load_dotenv()
 
+
 class GaiaOutput(BaseModel):
     is_solvable: bool
     unsolvable_reason: str = ""
     final_answer: str = ""
+
 
 gaia_prompt = """
 You are a general AI assistant. I will ask you a question.
@@ -35,8 +37,10 @@ PROVIDER_SEMAPHORES = {
     "anthropic": asyncio.Semaphore(10),
 }
 
+
 def get_provider(model: str) -> str:
     return "anthropic" if model.startswith("anthropic/") else "openai"
+
 
 async def solve_problem(model: str, question: str) -> GaiaOutput:
     provider = get_provider(model)
@@ -56,9 +60,11 @@ async def solve_problem(model: str, question: str) -> GaiaOutput:
         if finish_reason == "refusal" or content is None:
             return GaiaOutput(
                 is_solvable=False,
-                unsolvable_reason="The model refused to answer the question : " + finish_reason,
+                unsolvable_reason="The model refused to answer the question : "
+                + finish_reason,
             )
         return GaiaOutput.model_validate_json(content)
+
 
 def is_correct(prediction: str | None, answer: str) -> bool:
     if prediction is None:
@@ -67,6 +73,7 @@ def is_correct(prediction: str | None, answer: str) -> bool:
     normalized_prediction = prediction.strip().lower()
     normalized_answer = answer.strip().lower()
     return normalized_prediction == normalized_answer
+
 
 async def evaluatate_gaia_single(problem: dict, model: str) -> dict:
     try:
@@ -91,6 +98,7 @@ async def evaluatate_gaia_single(problem: dict, model: str) -> dict:
             "unsolvable_reason": str(e),
         }
 
+
 async def run_experiment(problems: list[dict], models: list[str]) -> dict[str, list]:
     tasks = [
         evaluatate_gaia_single(problem, model)
@@ -103,7 +111,7 @@ async def run_experiment(problems: list[dict], models: list[str]) -> dict[str, l
     for result in all_results:
         results[result["model"]].append(result)
     return results
-        
+
 
 async def main():
     level1_problems = load_dataset(
@@ -119,6 +127,7 @@ async def main():
     subset = level1_problems.select(range(20))
     results = await run_experiment(subset, MODELS)
     print(results)
+
 
 if __name__ == "__main__":
     asyncio.run(main())
