@@ -6,7 +6,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from dotenv import load_dotenv
 
-from agent.utils import format_tool_definition
+from agentex.utils import format_tool_definition
 
 load_dotenv()
 

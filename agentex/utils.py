@@ -1,4 +1,6 @@
 import inspect
+from agentex.types import Message
+from agentex.context import ToolCall, ToolResult
 
 
 def function_to_input_schema(func) -> dict:
@@ -10,6 +12,7 @@ def function_to_input_schema(func) -> dict:
         bool: "boolean",
         list: "array",
         dict: "object",
+        None: "null",
         type(None): "null",
     }
     try:
@@ -64,3 +67,17 @@ def funtion_to_tool_definition(func) -> dict:
         description=func.__doc__ or "No description provided.",
         parameters=parameters,
     )
+
+
+def display_trace(context) -> None:
+    """Print a readable trace of events recorded in an ExecutionContext."""
+    for index, event in enumerate(context.events, start=1):
+        print(f"\n[{index}] {event.author}")
+        for item in event.content:
+            if isinstance(item, Message):
+                print(f"  {item.role}: {item.content}")
+            elif isinstance(item, ToolCall):
+                print(f"  tool call: {item.name}({item.arguments})")
+            elif isinstance(item, ToolResult):
+                preview = str(item.content[0]) if item.content else ""
+                print(f"  tool result: {item.name} -> {preview[:500]}")

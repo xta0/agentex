@@ -2,9 +2,9 @@ import os
 import json
 from dotenv import load_dotenv
 from tavily import TavilyClient
-from agent.utils import funtion_to_tool_definition
+from agentex.utils import funtion_to_tool_definition
 from litellm import completion
-from agent.tool import tool
+from agentex.tool import tool
 
 load_dotenv()
 

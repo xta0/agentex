@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from pydantic import BaseModel
 from litellm import completion
 
-from agent.tool import tool
+from agentex.tool import tool
 
 load_dotenv()
 

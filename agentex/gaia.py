@@ -1,11 +1,21 @@
 import asyncio
+import os
 from tqdm.asyncio import tqdm_asyncio
 from datasets import load_dataset
 from dotenv import load_dotenv
 from pydantic import BaseModel
-from litellm import acompletion
+from agentex.mcp_tools import load_mcp_tools
+from agentex.agent import Agent
+from agentex.llm import LlmClient
+from agentex.utils import display_trace
 
 load_dotenv()
+
+connection = {
+    "command": "npx",
+    "args": ["-y", "tavily-mcp@latest"],
+    "env": {"TAVILY_API_KEY": os.getenv("TAVILY_API_KEY")},
+}
 
 
 class GaiaOutput(BaseModel):
@@ -32,38 +42,17 @@ If you are asked for a comma separated list, apply the above rules depending on
 whether the element is a number or a string.
 """
 
-PROVIDER_SEMAPHORES = {
-    "openai": asyncio.Semaphore(30),
-    "anthropic": asyncio.Semaphore(10),
-}
+SEMAPHORE = asyncio.Semaphore(3)
 
 
-def get_provider(model: str) -> str:
-    return "anthropic" if model.startswith("anthropic/") else "openai"
-
-
-async def solve_problem(model: str, question: str) -> GaiaOutput:
-    provider = get_provider(model)
-    async with PROVIDER_SEMAPHORES[provider]:
-        response = await acompletion(
-            model=model,
-            messages=[
-                {"role": "system", "content": gaia_prompt},
-                {"role": "user", "content": question},
-            ],
-            response_format=GaiaOutput,
-            num_retries=2,
-        )
-        finish_reason = response.choices[0].finish_reason
-        content = response.choices[0].message.content
-
-        if finish_reason == "refusal" or content is None:
-            return GaiaOutput(
-                is_solvable=False,
-                unsolvable_reason="The model refused to answer the question : "
-                + finish_reason,
-            )
-        return GaiaOutput.model_validate_json(content)
+async def solve_problem(agent: Agent, question: str) -> GaiaOutput:
+    async with SEMAPHORE:
+        result = await agent.run(question)
+        print(type(result))
+        print("=========================")
+        display_trace(result.context)
+        print("=========================")
+        return result.output
 
 
 def is_correct(prediction: str | None, answer: str) -> bool:
@@ -75,9 +64,10 @@ def is_correct(prediction: str | None, answer: str) -> bool:
     return normalized_prediction == normalized_answer
 
 
-async def evaluatate_gaia_single(problem: dict, model: str) -> dict:
+async def evaluatate_gaia_single(problem: dict, model: str, tools: list) -> dict:
     try:
-        output = await solve_problem(model, problem["Question"])
+        agent = create_gaia_agent(model, tools)
+        output = await solve_problem(agent, problem["Question"])
         return {
             "task_id": problem["task_id"],
             "model": model,
@@ -99,18 +89,34 @@ async def evaluatate_gaia_single(problem: dict, model: str) -> dict:
         }
 
 
-async def run_experiment(problems: list[dict], models: list[str]) -> dict[str, list]:
+async def run_experiment(
+    problems: list[dict], models: list[str], tools: list
+) -> dict[str, list]:
     tasks = [
-        evaluatate_gaia_single(problem, model)
+        evaluatate_gaia_single(problem, model, tools)
         for problem in problems
         for model in models
     ]
     all_results = await tqdm_asyncio.gather(*tasks, desc="Evaluating GAIA problems")
 
-    results = {models: [] for models in models}
+    results = {model: [] for model in models}
     for result in all_results:
         results[result["model"]].append(result)
     return results
+
+
+def create_gaia_agent(model: str, tools: list) -> Agent:
+    return Agent(
+        model=LlmClient(model),
+        tools=tools,
+        instructions=gaia_prompt,
+        output_type=GaiaOutput,
+        max_steps=10,
+    )
+
+
+async def load_tools(connection: dict) -> list:
+    return await load_mcp_tools(connection)
 
 
 async def main():
@@ -124,8 +130,9 @@ async def main():
         "gpt-5",
         "gpt-5-mini",
     ]
-    subset = level1_problems.select(range(20))
-    results = await run_experiment(subset, MODELS)
+    subset = level1_problems.select(range(3))
+    tools = await load_tools(connection)
+    results = await run_experiment(subset, MODELS, tools)
     print(results)
 
 
